@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+<style>
+:root {
+  --font: -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+body {
+  margin:0;
+  padding:20px;
+  font-family:var(--font);
+  background:linear-gradient(180deg,#f7fbff,#eef6ff);
+  display:flex;
+  justify-content:center;
+}
+
+.widget {
+  width:100%;
+  max-width:420px;
+  background:rgba(255,255,255,0.9);
+  backdrop-filter:blur(16px);
+  border-radius:24px;
+  padding:24px;
+  box-shadow:0 12px 30px rgba(0,0,0,0.08);
+  position:relative;
+}
+
+h1 { font-size:20px; margin-bottom:8px; }
+p { font-size:14px; color:#555; }
+
+.btn {
+  width:100%;
+  padding:14px;
+  border-radius:16px;
+  border:none;
+  font-size:14px;
+  cursor:pointer;
+  margin-top:10px;
+  transition:0.2s;
+}
+
+.btn-primary {
+  background:linear-gradient(135deg,#7bbcff,#a5d8ff);
+  color:#fff;
+}
+
+.btn-secondary {
+  background:#eef4ff;
+}
+
+/* ACTIVE ACTION */
+.btn-secondary.active {
+  background:#d2e7ff;
+  box-shadow: inset 0 2px 6px rgba(0,0,0,0.08);
+}
+
+.btn:disabled {
+  opacity:0.4;
+}
+
+/* OPTIONS */
+.options {
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+
+.option {
+  padding:12px;
+  border-radius:14px;
+  background:#f2f6ff;
+  text-align:center;
+  cursor:pointer;
+}
+
+.option.selected {
+  background:#cfe7ff;
+}
+
+/* 🔋 BATTERY */
+.battery {
+  width:100%;
+  height:20px;
+  border:2px solid #ccc;
+  border-radius:6px;
+  position:relative;
+  margin:16px 0;
+}
+
+.battery::after {
+  content:"";
+  position:absolute;
+  right:-6px;
+  top:4px;
+  width:4px;
+  height:10px;
+  background:#ccc;
+  border-radius:2px;
+}
+
+.battery-fill {
+  height:100%;
+  width:30%;
+  transition:0.5s;
+}
+
+.resource { background:#7ee0a3; }
+.neutral { background:#a5d8ff; }
+.overload { background:#ffd27f; }
+.stop { background:#ff9a9a; }
+
+/* PROGRESS */
+.progress {
+  position:absolute;
+  bottom:0;
+  left:0;
+  width:100%;
+  height:6px;
+  background:#e6efff;
+}
+
+.bar {
+  height:100%;
+  width:0%;
+  background:linear-gradient(90deg,#7bbcff,#a5d8ff);
+  transition:0.4s;
+}
+
+.hidden { display:none; }
+</style>
+</head>
+
+<body>
+
+<div class="widget">
+
+<div id="s1">
+<h1>Как ты сейчас на самом деле?</h1>
+<p>2 шага, чтобы понять состояние и немного помочь себе</p>
+<button class="btn btn-primary" onclick="next(1)">Проверить состояние</button>
+</div>
+
+<div id="s2" class="hidden">
+<h1>Что из этого про тебя?</h1>
+<p>Выбери 2–4 пункта</p>
+<div class="options" id="options"></div>
+<p id="counter">0 выбрано</p>
+<button id="nextBtn" class="btn btn-primary" disabled onclick="calculate()">Показать результат</button>
+</div>
+
+<div id="s3" class="hidden">
+<div id="resultBlock"></div>
+
+<div class="battery">
+  <div id="energyFill" class="battery-fill"></div>
+</div>
+
+<div id="actions"></div>
+
+<p>Стало немного лучше?</p>
+<button class="btn btn-primary" onclick="next(3)">Да</button>
+<button class="btn btn-secondary" onclick="next(3)">Пока нет</button>
+</div>
+
+<div id="s4" class="hidden">
+<h1>Хочешь продолжить?</h1>
+<button class="btn btn-primary" onclick="finish()">Завершить</button>
+<button class="btn btn-secondary" onclick="restart()">Начать заново</button>
+</div>
+
+<div id="s5" class="hidden">
+<h1>Ты уже сделал шаг к себе</h1>
+<p>Даже небольшое внимание к своему состоянию снижает перегруз и помогает восстановиться.</p>
+<p>Возвращайся к этому инструменту, когда нужно.</p>
+</div>
+
+<div class="progress"><div id="bar" class="bar"></div></div>
+
+</div>
+
+<script>
+let selected=[];
+let appliedActions=new Set();
+
+const states=[{text:"Устал / нет сил",zone:"stop"},
+{text:"Сонливость",zone:"stop"},
+{text:"Нет мотивации",zone:"neutral"},
+{text:"Всё кажется сложным",zone:"overload"},
+{text:"Спокоен",zone:"resource"},
+{text:"Обычное состояние",zone:"neutral"},
+{text:"Могу работать",zone:"resource"},
+{text:"Всё под контролем",zone:"resource"},
+{text:"Много мыслей",zone:"overload"},
+{text:"Тревога",zone:"overload"},
+{text:"Сложно сосредоточиться",zone:"overload"},
+{text:"Внутреннее напряжение",zone:"overload"},
+{text:"Раздражён / на грани",zone:"stop"},
+{text:"Хочется всё бросить",zone:"stop"},
+{text:"Злюсь / срываюсь",zone:"stop"},
+{text:"Чувствую сильное давление",zone:"stop"}];
+
+const results={
+resource:{title:"Ты в ресурсном состоянии",desc:"Есть энергия и устойчивость — хорошее время для действий",energy:80,actions:["Сделай одну важную задачу сейчас","Зафиксируй фокус на 25 минут","Используй это состояние для сложной работы"]},
+neutral:{title:"Нейтральное состояние",desc:"Ты стабилен, но ресурс не максимальный",energy:60,actions:["Определи 1 приоритет на ближайший час","Сделай короткую разминку","Выпей воды"]},
+overload:{title:"Похоже на перегруз",desc:"Слишком много стимулов — мозгу сложно справляться",energy:40,actions:["Закрой глаза на 1 минуту и глубоко подыши","Выпиши все мысли на бумагу","Убери 1 задачу из списка","Сделай паузу 3–5 минут"]},
+stop:{title:"Пора остановиться",desc:"Состояние близко к истощению — важно снизить нагрузку",energy:20,actions:["Сделай паузу 5 минут без экрана","Выйди пройтись","Выпей воды или поешь","Отложи сложные задачи"]}
+};
+
+states.forEach((s,i)=>{
+  const el=document.createElement("div");
+  el.className="option";
+  el.innerText=s.text;
+  el.onclick=()=>toggle(el,i);
+  document.getElementById("options").appendChild(el);
+});
+
+function toggle(el,i){
+  if(selected.includes(i)){
+    selected=selected.filter(x=>x!==i);
+    el.classList.remove("selected");
+  } else if(selected.length<4){
+    selected.push(i);
+    el.classList.add("selected");
+  }
+  document.getElementById("counter").innerText=selected.length+" выбрано";
+  document.getElementById("nextBtn").disabled=selected.length<2;
+}
+
+function calculate(){
+  appliedActions.clear();
+  next(2);
+
+  const score={resource:0,neutral:0,overload:0,stop:0};
+  selected.forEach(i=>score[states[i].zone]++);
+  const zone=Object.keys(score).reduce((a,b)=>score[a]>score[b]?a:b);
+
+  const data=results[zone];
+
+  document.getElementById("resultBlock").innerHTML=`<h1>${data.title}</h1><p>${data.desc}</p>`;
+
+  const fill=document.getElementById("energyFill");
+  fill.className="battery-fill "+zone;
+  fill.style.width=data.energy+"%";
+
+  const actions=document.getElementById("actions");
+  actions.innerHTML="";
+
+  data.actions.forEach((a,index)=>{
+    const btn=document.createElement("button");
+    btn.className="btn btn-secondary";
+    btn.innerText=a;
+
+    btn.onclick=()=>{
+      if(appliedActions.has(index)) return;
+
+      appliedActions.add(index);
+      btn.classList.add("active");
+      btn.innerText="✔ " + a;
+
+      fill.style.width=Math.min(100,parseInt(fill.style.width)+5)+"%";
+    };
+
+    actions.appendChild(btn);
+  });
+}
+
+function next(step){
+  ["s1","s2","s3","s4","s5"].forEach(s=>document.getElementById(s).classList.add("hidden"));
+  document.getElementById("s"+(step+1)).classList.remove("hidden");
+  document.getElementById("bar").style.width=[20,50,75,90,100][step]+"%";
+}
+
+function finish(){ next(4); }
+
+function restart(){
+  selected=[];
+  appliedActions.clear();
+
+  document.querySelectorAll(".option").forEach(el=>el.classList.remove("selected"));
+  document.getElementById("counter").innerText="0 выбрано";
+  document.getElementById("nextBtn").disabled=true;
+
+  document.getElementById("energyFill").style.width="30%";
+  document.getElementById("energyFill").className="battery-fill";
+
+  document.getElementById("resultBlock").innerHTML="";
+  document.getElementById("actions").innerHTML="";
+
+  next(0);
+}
+</script>
+
+</body>
+</html>
